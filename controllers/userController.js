@@ -100,10 +100,8 @@ exports.createTeam = async (req, res) => {
         const { name, members } = req.body;
         if (!name) return res.status(400).json({ message: 'שם הצוות נדרש' });
 
-        // אם לא נשלחה רשימת משתמשים, ניצור רשימה ריקה
         let teamMembers = members && Array.isArray(members) ? members : [];
 
-        // נוסיף את המשתמש היוצר לרשימת החברים אם הוא לא כבר בפנים
         if (!teamMembers.includes(req.user.id)) {
             teamMembers.push(req.user.id);
         }
@@ -114,10 +112,12 @@ exports.createTeam = async (req, res) => {
         });
 
         await newTeam.save();
-        res.status(201).json(newTeam);
+
+        // ✅ ודא שהתשובה תמיד בפורמט JSON תקין
+        res.status(201).json({ message: 'Team created successfully', team: newTeam });
     } catch (error) {
         console.error('❌ Error creating team:', error);
-        res.status(500).json({ message: 'Error creating team', error });
+        res.status(500).json({ message: 'Error creating team', error: error.message });
     }
 };
 
