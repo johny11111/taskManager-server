@@ -15,11 +15,23 @@ const io = new Server(server, {
 connectDB();
 
 // 📌 שימוש ב-CORS כדי לאפשר תקשורת בין ה-Frontend ל-Backend
-app.use(cors({
-    origin: 'http://localhost:5173', // מתיר קריאות מה-Frontend
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // מתיר רק את הפעולות האלו
-    allowedHeaders: ['Content-Type', 'Authorization'] // מתיר שליחת טוקנים ונתונים
-}));
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://taskmanager-client-2pyw.onrender.com'
+  ];
+  
+  app.use(cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true); // מאשר את הבקשה
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  }));
+  
 
 app.use(express.json());
 
