@@ -17,7 +17,7 @@ connectDB();
 // 📌 שימוש ב-CORS כדי לאפשר תקשורת בין ה-Frontend ל-Backend
 const allowedOrigins = [
     'http://localhost:5173',
-    'https://taskmanager-client-2pyw.onrender.com/'
+    'https://taskmanager-client-2pyw.onrender.com'
   ];
   
   app.use(cors({
