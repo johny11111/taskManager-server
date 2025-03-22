@@ -1,5 +1,5 @@
 const express = require('express');
-const { registerUser, loginUser, getAllUsers, getTeam, addToTeam, getTeams, createTeam, getTeamById, getTeamMembers, sendInvite } = require('../controllers/userController');
+const { registerUser, loginUser, getAllUsers, getTeam, addToTeam, getTeams, createTeam, getTeamById, getTeamMembers, sendInvite , deleteTeam } = require('../controllers/userController');
 const { authMiddleware } = require('../middleware/auth');
 
 
@@ -15,6 +15,7 @@ router.get('/teams/:teamId', authMiddleware, getTeamById);
 router.post('/create', authMiddleware, createTeam);
 router.post('/invite', authMiddleware, sendInvite);
 router.get('/team-members', authMiddleware, getTeamMembers);
+router.delete('/teams/:teamId', authMiddleware, deleteTeam);
 
 
 module.exports = router;

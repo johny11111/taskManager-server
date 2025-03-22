@@ -176,8 +176,10 @@ exports.createTeam = async (req, res) => {
 
         const newTeam = new Team({
             name,
-            members: [req.user.id] // המשתמש שיצר מתווסף לצוות
-        });
+            members: [req.user.id],
+            createdBy: req.user.id 
+          });
+          
 
         await newTeam.save();
 
@@ -192,6 +194,38 @@ exports.createTeam = async (req, res) => {
         res.status(500).json({ message: 'Error creating team', error: error.message });
     }
 };
+
+// userController.js
+
+exports.deleteTeam = async (req, res) => {
+    try {
+      const { teamId } = req.params;
+      const userId = req.user.id;
+  
+      const team = await Team.findById(teamId);
+      if (!team) {
+        return res.status(404).json({ message: 'Team not found' });
+      }
+  
+      if (team.createdBy.toString() !== userId) {
+        return res.status(403).json({ message: 'רק יוצר הצוות יכול למחוק אותו' });
+      }
+  
+      // הסרת הצוות מרשימת הצוותים של כל המשתמשים
+      await User.updateMany(
+        { teams: teamId },
+        { $pull: { teams: teamId } }
+      );
+  
+      await team.remove();
+  
+      res.status(200).json({ message: 'הצוות נמחק בהצלחה' });
+    } catch (error) {
+      console.error('❌ Error deleting team:', error);
+      res.status(500).json({ message: 'שגיאה במחיקת הצוות', error });
+    }
+  };
+  
 
 
 
