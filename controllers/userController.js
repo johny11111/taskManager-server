@@ -211,13 +211,14 @@ exports.deleteTeam = async (req, res) => {
         return res.status(403).json({ message: 'רק יוצר הצוות יכול למחוק אותו' });
       }
   
-      // הסרת הצוות מרשימת הצוותים של כל המשתמשים
+      // הסרת הצוות מכל המשתמשים
       await User.updateMany(
         { teams: teamId },
         { $pull: { teams: teamId } }
       );
   
-      await team.remove();
+      // מחיקת הצוות
+      await Team.findByIdAndDelete(teamId);
   
       res.status(200).json({ message: 'הצוות נמחק בהצלחה' });
     } catch (error) {
@@ -225,6 +226,7 @@ exports.deleteTeam = async (req, res) => {
       res.status(500).json({ message: 'שגיאה במחיקת הצוות', error });
     }
   };
+  
   
 
 
