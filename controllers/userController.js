@@ -22,12 +22,12 @@ exports.sendInvite = async (req, res) => {
 
     if (invitedUser) {
         // המשתמש כבר קיים – שלח קישור התחברות
-        const inviteLink = `http://localhost:5173/login`;
+        const inviteLink = `https://taskmanager-client-2pyw.onrender.com/login`;
         await sendEmail(email, 'הצטרפות לצוות', `היי, הזמינו אותך לצוות. התחבר כאן: ${inviteLink}`);
     } else {
         // המשתמש לא קיים – שלח הזמנה להרשמה עם token
         const token = createInviteToken(teamId);
-        const inviteLink = `http://localhost:5173/register?token=${token}`;
+        const inviteLink = `https://taskmanager-client-2pyw.onrender.com/register?token=${token}`;
         await sendEmail(email, 'הזמנה לצוות', `הצטרף לצוות על ידי הרשמה כאן: ${inviteLink}`);
     }
 
