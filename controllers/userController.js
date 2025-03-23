@@ -83,18 +83,24 @@ exports.registerUser = async (req, res) => {
 
 exports.getTeamMembers = async (req, res) => {
     try {
-        const currentUser = await User.findById(req.user.userId);
-        if (!currentUser || !currentUser.teamId) {
-            return res.status(400).json({ message: 'משתמש לא משויך לצוות' });
+        const { teamId } = req.query;
+
+        if (!teamId) {
+            return res.status(400).json({ message: 'חסר teamId בבקשה' });
         }
 
-        const members = await User.find({ teamId: currentUser.teamId }, '_id name email');
-        res.status(200).json(members);
+        const team = await Team.findById(teamId).populate('members', '_id name email');
+        if (!team) {
+            return res.status(404).json({ message: 'Team not found' });
+        }
+
+        res.status(200).json(team.members);
     } catch (error) {
         console.error('❌ Error fetching team members:', error);
         res.status(500).json({ message: 'שגיאה בקבלת חברי הצוות', error });
     }
 };
+
 
 
 exports.loginUser = async (req, res) => {
