@@ -1,4 +1,7 @@
 const Task = require('../models/Task');
+const User = require("../models/User")
+const { google } = require('googleapis');
+const getAuthorizedClient = require('../utils/googleClient');
 const { formatDate, isOverdue, daysUntilDue } = require('../utils/helpers');
 
 
@@ -30,29 +33,29 @@ exports.getTasks = async (req, res) => {
 
 
 // 📌 יצירת משימה חדשה
-exports.createTask = async (req, res) => {
-    try {
-        const { title, description, assignedTo, dueDate } = req.body;
+// exports.createTask = async (req, res) => {
+//     try {
+//         const { title, description, assignedTo, dueDate } = req.body;
 
-        if (!title || !assignedTo) {
-            return res.status(400).json({ message: 'Title and assignedTo are required' });
-        }
+//         if (!title || !assignedTo) {
+//             return res.status(400).json({ message: 'Title and assignedTo are required' });
+//         }
 
-        const newTask = new Task({
-            title,
-            description,
-            assignedTo,
-            createdBy: req.user.id, // 🔹 שמירת מי יצר את המשימה
-            dueDate
-        });
+//         const newTask = new Task({
+//             title,
+//             description,
+//             assignedTo,
+//             createdBy: req.user.id, // 🔹 שמירת מי יצר את המשימה
+//             dueDate
+//         });
 
-        await newTask.save();
-        res.status(201).json(newTask);
-    } catch (error) {
-        console.error('❌ Error creating task:', error);
-        res.status(500).json({ message: 'Error creating task', error });
-    }
-};
+//         await newTask.save();
+//         res.status(201).json(newTask);
+//     } catch (error) {
+//         console.error('❌ Error creating task:', error);
+//         res.status(500).json({ message: 'Error creating task', error });
+//     }
+// };
 
 
 // 📌 עדכון משימה קיימת
@@ -80,21 +83,45 @@ exports.updateTask = async (req, res) => {
     }
 };
 
-// 📌 מחיקת משימה
+
+
 exports.deleteTask = async (req, res) => {
     try {
-        const task = await Task.findById(req.params.id);
-        if (!task) {
-            return res.status(404).json({ message: 'Task not found' });
+      const task = await Task.findById(req.params.id);
+      if (!task) return res.status(404).json({ message: 'Task not found' });
+  
+      // אם יש אירוע ביומן – ננסה למחוק אותו
+      if (task.googleEventId) {
+        const user = await User.findById(task.createdBy);
+        if (user?.googleCalendar?.access_token) {
+          const oauth2Client = new google.auth.OAuth2();
+          oauth2Client.setCredentials({
+            access_token: user.googleCalendar.access_token,
+            refresh_token: user.googleCalendar.refresh_token
+          });
+  
+          const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+          try {
+            await calendar.events.delete({
+              calendarId: 'primary',
+              eventId: task.googleEventId
+            });
+            console.log(`🗑️ אירוע נמחק מהיומן: ${task.googleEventId}`);
+          } catch (err) {
+            console.warn('⚠️ לא הצליח למחוק את האירוע מהיומן:', err.message);
+          }
         }
-
-        await task.deleteOne();
-        res.status(200).json({ message: 'Task deleted successfully' });
+      }
+  
+      await task.deleteOne();
+      res.status(200).json({ message: 'Task deleted successfully' });
     } catch (error) {
-        console.error('❌ Error deleting task:', error);
-        res.status(500).json({ message: 'Error deleting task', error });
+      console.error('❌ Error deleting task:', error);
+      res.status(500).json({ message: 'Error deleting task', error });
     }
-};
+  };
+  
+
 
 // 📌 סינון ומיון משימות לפי סטטוס ותאריך יעד
 exports.getFilteredTasks = async (req, res) => {
@@ -144,30 +171,138 @@ exports.getTasksByTeam = async (req, res) => {
 };
 
 
-exports.createTaskForTeam = async (req, res) => {
-    try {
-        const { title, description, assignedTo, dueDate } = req.body;
-        const { teamId } = req.params; // מקבל את ה-teamId מהנתיב
 
-        if (!title || !assignedTo || !teamId) {
-            return res.status(400).json({ message: 'Title, assignedTo, and teamId are required' });
-        }
-
-        const newTask = new Task({
-            title,
-            description,
-            assignedTo,
-            createdBy: req.user.id, 
-            dueDate,
-            teamId // ✅ שמירת teamId
-        });
-
-        await newTask.save();
-        res.status(201).json(newTask);
-    } catch (error) {
-        console.error('❌ Error creating task:', error);
-        res.status(500).json({ message: 'Error creating task', error });
+const createGoogleCalendarEvent = async (userId, task) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user?.googleCalendar?.access_token) {
+      console.log("🚫 אין טוקן ליומן עבור המשתמש");
+      return;
     }
+
+    const oauth2Client = getAuthorizedClient(user);
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    const startTime = new Date(task.dueDate);
+    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+
+    const eventResponse = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: {
+        summary: task.title,
+        description: task.description,
+        start: {
+          dateTime: startTime.toISOString(),
+          timeZone: 'Asia/Jerusalem',
+        },
+        end: {
+          dateTime: endTime.toISOString(),
+          timeZone: 'Asia/Jerusalem',
+        },
+      },
+    });
+
+    task.googleEventId = eventResponse.data.id;
+    await task.save();
+
+    console.log('🗓️ אירוע נוסף ליומן Google');
+  } catch (err) {
+    console.error('❌ שגיאה בהוספת אירוע ליומן:', err.response?.data || err.message);
+  }
 };
 
+  
+  exports.createTaskForTeam = async (req, res) => {
+    try {
+      const { title, description, assignedTo, dueDate } = req.body;
+      const { teamId } = req.params;
+  
+      if (!title || !assignedTo || !teamId) {
+        return res.status(400).json({ message: 'Title, assignedTo, and teamId are required' });
+      }
+  
+      const newTask = new Task({
+        title,
+        description,
+        assignedTo,
+        createdBy: req.user.id,
+        dueDate,
+        teamId
+      });
+  
+      await newTask.save();
+  
+      // 📌 סנכרון ליומן Google + שמירת eventId
+      await createGoogleCalendarEvent(req.user.id, newTask);
+
+      res.status(201).json(newTask);
+    } catch (error) {
+      console.error('❌ Error creating task:', error);
+      res.status(500).json({ message: 'Error creating task', error });
+    }
+  };
+
+
+  exports.syncOpenTasksToCalendar = async (req, res) => {
+    try {
+      const user = await User.findById(req.user.id);
+      if (!user?.googleCalendar?.access_token) {
+        return res.status(400).json({ message: 'יומן Google לא מחובר' });
+      }
+  
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials({
+        access_token: user.googleCalendar.access_token,
+        refresh_token: user.googleCalendar.refresh_token,
+      });
+  
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  
+      // משימות פתוחות שטרם סונכרנו
+      const tasks = await Task.find({
+        createdBy: user._id,
+        status: 'pending',
+        googleEventId: { $exists: false },
+      });
+  
+      let addedCount = 0;
+  
+      for (const task of tasks) {
+        if (!task.dueDate) continue;
+  
+        const start = new Date(task.dueDate);
+        const end = new Date(start.getTime() + 60 * 60 * 1000);
+  
+        try {
+          const response = await calendar.events.insert({
+            calendarId: 'primary',
+            requestBody: {
+              summary: task.title,
+              description: task.description,
+              start: {
+                dateTime: start.toISOString(),
+                timeZone: 'Asia/Jerusalem',
+              },
+              end: {
+                dateTime: end.toISOString(),
+                timeZone: 'Asia/Jerusalem',
+              },
+            },
+          });
+  
+          task.googleEventId = response.data.id;
+          await task.save();
+          addedCount++;
+        } catch (err) {
+          console.error('❌ שגיאה בהוספת אירוע:', err.message);
+        }
+      }
+  
+      res.json({ addedCount });
+    } catch (err) {
+      console.error('❌ שגיאה כללית בסנכרון:', err.message);
+      res.status(500).json({ message: 'שגיאה בסנכרון ליומן', error: err.message });
+    }
+  };
+  
 

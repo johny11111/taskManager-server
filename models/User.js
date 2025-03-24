@@ -2,18 +2,22 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const UserSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    teams: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Team' }] // רשימה של צוותים
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  teams: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Team' }],
+  googleCalendar: {
+    access_token: { type: String },
+    refresh_token: { type: String },
+    expiry_date: { type: Number }
+  }
 });
 
-// הצפנת סיסמה לפני שמירה
 UserSchema.pre('save', async function (next) {
-    if (!this.isModified('password')) return next();
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
+  if (!this.isModified('password')) return next();
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
 });
 
 module.exports = mongoose.model('User', UserSchema);

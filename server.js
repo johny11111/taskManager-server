@@ -1,6 +1,7 @@
 const express = require('express');
 const connectDB = require('./config/db');
 const http = require('http');
+const googleRoutes = require('./routes/googleAuth');
 const cors = require('cors'); // 📌 הוספת CORS
 const { Server } = require('socket.io');
 require('dotenv').config();
@@ -43,6 +44,7 @@ app.use(express.json());
 // 📌 ניתובים
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/google', googleRoutes);
 
 // WebSockets
 io.on('connection', (socket) => {

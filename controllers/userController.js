@@ -79,6 +79,18 @@ exports.registerUser = async (req, res) => {
     }
 };
 
+exports.getCurrentUser = async (req, res) => {
+    try {
+      const user = await User.findById(req.user.id);
+      if (!user) return res.status(404).json({ message: 'משתמש לא נמצא' });
+  
+      res.json(user);
+    } catch (err) {
+      console.error('שגיאה בשליפת המשתמש:', err);
+      res.status(500).json({ message: 'שגיאה בשרת' });
+    }
+  };
+  
 
 
 exports.getTeamMembers = async (req, res) => {
