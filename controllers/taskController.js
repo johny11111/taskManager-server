@@ -84,33 +84,40 @@ exports.updateTask = async (req, res) => {
 };
 
 
-
-exports.deleteTask = async (req, res) => {
+const deleteGoogleCalendarEvent = async (userId, eventId) => {
+    try {
+      const user = await User.findById(userId);
+      if (!user?.googleCalendar?.access_token || !eventId) return;
+  
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials({
+        access_token: user.googleCalendar.access_token,
+        refresh_token: user.googleCalendar.refresh_token
+      });
+  
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  
+      await calendar.events.delete({
+        calendarId: 'primary',
+        eventId
+      });
+  
+      console.log('🗑️ אירוע נמחק מהיומן');
+    } catch (err) {
+      console.error('❌ שגיאה במחיקת אירוע מהיומן:', err.message);
+    }
+  };
+  
+  exports.deleteTask = async (req, res) => {
     try {
       const task = await Task.findById(req.params.id);
-      if (!task) return res.status(404).json({ message: 'Task not found' });
+      if (!task) {
+        return res.status(404).json({ message: 'Task not found' });
+      }
   
-      // אם יש אירוע ביומן – ננסה למחוק אותו
+      // 🧠 נסה למחוק גם את האירוע מהיומן אם יש googleEventId
       if (task.googleEventId) {
-        const user = await User.findById(task.createdBy);
-        if (user?.googleCalendar?.access_token) {
-          const oauth2Client = new google.auth.OAuth2();
-          oauth2Client.setCredentials({
-            access_token: user.googleCalendar.access_token,
-            refresh_token: user.googleCalendar.refresh_token
-          });
-  
-          const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-          try {
-            await calendar.events.delete({
-              calendarId: 'primary',
-              eventId: task.googleEventId
-            });
-            console.log(`🗑️ אירוע נמחק מהיומן: ${task.googleEventId}`);
-          } catch (err) {
-            console.warn('⚠️ לא הצליח למחוק את האירוע מהיומן:', err.message);
-          }
-        }
+        await deleteGoogleCalendarEvent(req.user.id, task.googleEventId);
       }
   
       await task.deleteOne();
