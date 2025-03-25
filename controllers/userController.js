@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
 const { createInviteToken } = require('../utils/inviteToken');
+const { decodeInviteToken } = require('../utils/inviteToken');
 const sendEmail = require('../utils/sendEmail'); 
 
 exports.sendInvite = async (req, res) => {
@@ -21,24 +22,22 @@ exports.sendInvite = async (req, res) => {
     const invitedUser = await User.findOne({ email });
 
     if (invitedUser) {
-        // המשתמש כבר קיים – שלח קישור התחברות
+        // המשתמש כבר קיים – הוסף אותו לצוות
+        await User.findByIdAndUpdate(invitedUser._id, {
+            $addToSet: { teams: teamId }
+        });
+    
+        await Team.findByIdAndUpdate(teamId, {
+            $addToSet: { members: invitedUser._id }
+        });
+    
         const inviteLink = `https://taskmanager-client-2pyw.onrender.com/#/login`;
         await sendEmail(email, 'הצטרפות לצוות', `היי, הזמינו אותך לצוות. התחבר כאן: ${inviteLink}`);
-    } else {
-        // המשתמש לא קיים – שלח הזמנה להרשמה עם token
-        const token = createInviteToken(teamId);
-        const inviteLink = `https://taskmanager-client-2pyw.onrender.com/#/register?token=${token}`;
-
-        await sendEmail(email, 'הזמנה לצוות', `הצטרף לצוות על ידי הרשמה כאן: ${inviteLink}`);
     }
+    
 
     res.status(200).json({ message: 'ההזמנה נשלחה בהצלחה' });
 };
-
-
-
-
-const { decodeInviteToken } = require('../utils/inviteToken');
 
 exports.registerUser = async (req, res) => {
     try {
@@ -91,8 +90,6 @@ exports.getCurrentUser = async (req, res) => {
     }
   };
   
-
-
 exports.getTeamMembers = async (req, res) => {
     try {
         const { teamId } = req.query;
@@ -213,7 +210,6 @@ exports.createTeam = async (req, res) => {
     }
 };
 
-// userController.js
 
 exports.deleteTeam = async (req, res) => {
     try {
@@ -244,15 +240,6 @@ exports.deleteTeam = async (req, res) => {
       res.status(500).json({ message: 'שגיאה במחיקת הצוות', error });
     }
   };
-  
-  
-
-
-
-
-
-
-
 
 exports.getTeamById = async (req, res) => {
     try {
