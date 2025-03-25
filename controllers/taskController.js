@@ -30,62 +30,73 @@ exports.getTasks = async (req, res) => {
 };
 
 
-
-
-// 📌 יצירת משימה חדשה
-// exports.createTask = async (req, res) => {
-//     try {
-//         const { title, description, assignedTo, dueDate } = req.body;
-
-//         if (!title || !assignedTo) {
-//             return res.status(400).json({ message: 'Title and assignedTo are required' });
-//         }
-
-//         const newTask = new Task({
-//             title,
-//             description,
-//             assignedTo,
-//             createdBy: req.user.id, // 🔹 שמירת מי יצר את המשימה
-//             dueDate
-//         });
-
-//         await newTask.save();
-//         res.status(201).json(newTask);
-//     } catch (error) {
-//         console.error('❌ Error creating task:', error);
-//         res.status(500).json({ message: 'Error creating task', error });
-//     }
-// };
-
+const updateGoogleCalendarEvent = async (userId, task) => {
+    try {
+      const user = await User.findById(userId);
+      if (!user?.googleCalendar?.access_token || !task.googleEventId) return;
+  
+      const oauth2Client = getAuthorizedClient(user);
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  
+      const startTime = new Date(task.dueDate);
+      const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+  
+      await calendar.events.update({
+        calendarId: 'primary',
+        eventId: task.googleEventId,
+        requestBody: {
+          summary: task.title,
+          description: task.description,
+          start: {
+            dateTime: startTime.toISOString(),
+            timeZone: 'Asia/Jerusalem',
+          },
+          end: {
+            dateTime: endTime.toISOString(),
+            timeZone: 'Asia/Jerusalem',
+          },
+        },
+      });
+  
+      console.log("📝 אירוע עודכן ביומן Google");
+    } catch (err) {
+      console.error("❌ שגיאה בעדכון אירוע ביומן:", err.message);
+    }
+  };
 
 // 📌 עדכון משימה קיימת
 exports.updateTask = async (req, res) => {
     try {
-        const { title, description, status, assignedTo, dueDate } = req.body;
-
-        const task = await Task.findById(req.params.id);
-        if (!task) {
-            return res.status(404).json({ message: 'Task not found' });
-        }
-
-        // עדכון השדות רק אם נשלח ערך חדש
-        task.title = title || task.title;
-        task.description = description || task.description;
-        task.status = status || task.status;
-        task.assignedTo = assignedTo || task.assignedTo;
-        task.dueDate = dueDate || task.dueDate;
-
-        const updatedTask = await task.save();
-        res.status(200).json(updatedTask);
+      const { title, description, status, assignedTo, dueDate } = req.body;
+  
+      const task = await Task.findById(req.params.id);
+      if (!task) {
+        return res.status(404).json({ message: 'Task not found' });
+      }
+  
+      task.title = title || task.title;
+      task.description = description || task.description;
+      task.status = status || task.status;
+      task.assignedTo = assignedTo || task.assignedTo;
+      task.dueDate = dueDate || task.dueDate;
+  
+      const updatedTask = await task.save();
+  
+      if (task.googleEventId) {
+        await updateGoogleCalendarEvent(req.user.id, updatedTask);
+      }
+  
+      res.status(200).json(updatedTask);
     } catch (error) {
-        console.error('❌ Error updating task:', error);
-        res.status(500).json({ message: 'Error updating task', error });
+      console.error('❌ Error updating task:', error);
+      res.status(500).json({ message: 'Error updating task', error });
     }
-};
+  };
 
 
-const deleteGoogleCalendarEvent = async (userId, eventId) => {
+const deleteGoogleCalendarEvent = async (userId, eventId) => { 
     try {
+        console.log("📌 מנסה למחוק אירוע מהיומן:", eventId);
       const user = await User.findById(userId);
       if (!user?.googleCalendar?.access_token || !eventId) return;
   
