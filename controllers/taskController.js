@@ -278,7 +278,7 @@ const createGoogleCalendarEvent = async (userId, task) => {
   
       // משימות פתוחות שטרם סונכרנו
       const tasks = await Task.find({
-        createdBy: user._id,
+        assignedTo: user._id,
         status: 'pending',
         googleEventId: { $exists: false },
       });
