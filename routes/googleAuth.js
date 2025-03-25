@@ -50,7 +50,8 @@ router.get('/calendar/callback', async (req, res) => {
     console.log('✅ משתמש עודכן עם טוקן:', updated.email);
 
     // החזרה ללקוח
-    res.redirect('https://taskmanager-client-2pyw.onrender.com/#/dashboard?calendar_connected=true');
+    res.redirect('https://taskmanager-client-2pyw.onrender.com/?calendar_connected=true#/dashboard');
+
   } catch (error) {
     console.error("❌ Google Auth Error:", error.response?.data || error.message);
     res.status(500).send("Authentication failed");
