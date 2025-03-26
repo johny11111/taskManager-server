@@ -2,8 +2,6 @@ const User = require('../models/User');
 const Team = require("../models/Team")
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-
-const { createInviteToken } = require('../utils/inviteToken');
 const { decodeInviteToken } = require('../utils/inviteToken');
 const sendEmail = require('../utils/sendEmail'); 
 
@@ -17,12 +15,9 @@ exports.sendInvite = async (req, res) => {
     if (!user.teams || !user.teams.includes(teamId)) {
         return res.status(400).json({ message: "אינך חבר בצוות זה" });
     }
-
-    // בודק אם המשתמש שאליו שולחים הזמנה כבר קיים
     const invitedUser = await User.findOne({ email });
 
     if (invitedUser) {
-        // המשתמש כבר קיים – הוסף אותו לצוות
         await User.findByIdAndUpdate(invitedUser._id, {
             $addToSet: { teams: teamId }
         });
@@ -32,7 +27,7 @@ exports.sendInvite = async (req, res) => {
         });
     
         const inviteLink = `https://taskmanager-client-2pyw.onrender.com/#/login`;
-        await sendEmail(email, 'הצטרפות לצוות', `היי, הזמינו אותך לצוות. התחבר כאן: ${inviteLink}`);
+        await sendEmail(email, 'הצטרפות לצוות', `היי  הזמינו אותך לצוות. התחבר כאן: ${inviteLink}`);
     }
     
 
@@ -110,8 +105,6 @@ exports.getTeamMembers = async (req, res) => {
     }
 };
 
-
-
 exports.loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -130,7 +123,6 @@ exports.loginUser = async (req, res) => {
         res.status(500).json({ message: 'Server error', error });
     }
 };
-
 
 exports.getAllUsers = async (req, res) => {
     try {
@@ -209,7 +201,6 @@ exports.createTeam = async (req, res) => {
         res.status(500).json({ message: 'Error creating team', error: error.message });
     }
 };
-
 
 exports.deleteTeam = async (req, res) => {
     try {
