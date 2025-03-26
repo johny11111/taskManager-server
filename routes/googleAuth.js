@@ -36,7 +36,7 @@ router.get('/calendar/callback', async (req, res) => {
   }
 
   const userId = state.userId;
-  const returnTo = state.returnTo || '/dashboard';
+  const returnTo = state.returnTo || '/teams';
 
   if (!code || !userId) {
     console.log('➡️ חסר code או userId:', { code, userId });
