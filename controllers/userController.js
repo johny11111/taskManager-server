@@ -117,12 +117,30 @@ exports.loginUser = async (req, res) => {
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-        res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: true,           // חשוב בפרודקשן עם HTTPS
+            sameSite: 'None',
+            maxAge: 60 * 60 * 1000  // שעה
+        });
+
+        res.json({ user: { id: user._id, name: user.name, email: user.email } });
     } catch (error) {
         console.error('❌ Error in loginUser:', error);
         res.status(500).json({ message: 'Server error', error });
     }
 };
+
+exports.logoutUser = (req, res) => {
+    res.clearCookie('token', {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Strict'
+    });
+    res.json({ message: 'Logged out successfully' });
+};
+
+
 
 exports.getAllUsers = async (req, res) => {
     try {
@@ -159,7 +177,7 @@ exports.getTeam = async (req, res) => {
         const user = await User.findById(req.user.userId).populate('team', 'name email');
         if (!user) return res.status(404).json({ message: "משתמש לא נמצא" });
 
-        res.status(200).json(user.team);
+        res.status(200).json(user.teams);
     } catch (error) {
         res.status(500).json({ message: "שגיאה בקבלת הצוות", error });
     }

@@ -1,23 +1,35 @@
 const express = require('express');
-const { registerUser, loginUser, getAllUsers, getTeam, addToTeam, getTeams, createTeam, getTeamById, getTeamMembers, sendInvite , deleteTeam, getCurrentUser } = require('../controllers/userController');
-const { authMiddleware } = require('../middleware/auth');
+const {
+  registerUser,
+  loginUser,
+  logoutUser,
+  getCurrentUser,
+  getTeamMembers,
+  getTeams,
+  getTeamById,
+  createTeam,
+  sendInvite,
+  deleteTeam,
+  getAllUsers,
+} = require('../controllers/userController');
 
+const { authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 
+// רוטות פתוחות - לא דורשות התחברות
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+router.post('/logout', logoutUser);
+
+// רוטות מוגנות - דורשות התחברות
 router.get('/me', authMiddleware, getCurrentUser);
-router.get('/all', authMiddleware, getAllUsers);
-router.post('/add-to-team', authMiddleware, addToTeam);
-router.get('/team', authMiddleware, getTeam);
+router.get('/team-members', authMiddleware, getTeamMembers);
 router.get('/teams', authMiddleware, getTeams);
 router.get('/teams/:teamId', authMiddleware, getTeamById);
-router.post('/create', authMiddleware, createTeam);
-router.post('/invite', authMiddleware, sendInvite);
-router.get('/team-members', authMiddleware, getTeamMembers);
+router.post('/teams/create', authMiddleware, createTeam);
 router.delete('/teams/:teamId', authMiddleware, deleteTeam);
-
-
+router.post('/invite', authMiddleware, sendInvite);
+router.get('/all', authMiddleware, getAllUsers); // רק אם בשימוש
 
 module.exports = router;
