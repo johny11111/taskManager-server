@@ -27,7 +27,16 @@ router.get('/auth', (req, res) => {
 // 📌 שלב 2 – קבלת ה-token לאחר אישור המשתמש
 router.get('/calendar/callback', async (req, res) => {
   const code = req.query.code;
-  const userId = req.query.state;
+  let state = {};
+
+  try {
+    state = JSON.parse(decodeURIComponent(req.query.state || '{}'));
+  } catch (err) {
+    console.error("❌ שגיאה בפענוח state:", err);
+  }
+
+  const userId = state.userId;
+  const returnTo = state.returnTo || '/dashboard';
 
   if (!code || !userId) {
     console.log('➡️ חסר code או userId:', { code, userId });
@@ -38,7 +47,6 @@ router.get('/calendar/callback', async (req, res) => {
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
-    // שמירה של הטוקן למסד
     const updated = await User.findByIdAndUpdate(userId, {
       googleCalendar: {
         access_token: tokens.access_token,
@@ -49,8 +57,8 @@ router.get('/calendar/callback', async (req, res) => {
 
     console.log('✅ משתמש עודכן עם טוקן:', updated.email);
 
-    // החזרה ללקוח
-    res.redirect('https://taskmanager-client-2pyw.onrender.com/?calendar_connected=true#/dashboard');
+    // הפניה ללקוח עם הפרמטר + העמוד הרצוי
+    res.redirect(`https://taskmanager-client-2pyw.onrender.com/?calendar_connected=true#${returnTo}`);
 
   } catch (error) {
     console.error("❌ Google Auth Error:", error.response?.data || error.message);
