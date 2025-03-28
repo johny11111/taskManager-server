@@ -133,13 +133,14 @@ exports.loginUser = async (req, res) => {
 
 exports.logoutUser = (req, res) => {
     res.clearCookie('token', {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'Strict'
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Strict',
+      path: '/', // 🛠️ חובה – חייב להתאים ל־path של ההגדרה המקורית
     });
     res.json({ message: 'Logged out successfully' });
-};
-
+  };
+  
 
 
 exports.getAllUsers = async (req, res) => {
