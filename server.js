@@ -22,7 +22,7 @@ connectDB();
 const allowedOrigins = [
   'http://localhost:5173',
   'https://taskmanager-client-2pyw.onrender.com',
-  'https://localhost' 
+  'https://localhost'  
 ];
 
 app.use(cors({
