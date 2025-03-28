@@ -59,11 +59,8 @@ router.get('/calendar/callback', async (req, res) => {
     console.log('✅ משתמש עודכן עם טוקן:', updated.email);
 
     // 📍 הפניה לפי הפלטפורמה
-    if (platform === 'app') {
-      res.redirect('capacitor://localhost');
-    } else {
-      res.redirect(`https://taskmanager-client-2pyw.onrender.com/?calendar_connected=true#${returnTo}`);
-    }
+    res.redirect(`https://taskmanager-client-2pyw.onrender.com/#/oauth2callback?calendar_connected=true&platform=${platform}`);
+
 
   } catch (error) {
     console.error("❌ Google Auth Error:", error.response?.data || error.message);
