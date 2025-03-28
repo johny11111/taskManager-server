@@ -37,6 +37,7 @@ router.get('/calendar/callback', async (req, res) => {
 
   const userId = state.userId;
   const returnTo = state.returnTo || '/teams';
+  const platform = state.platform || 'web';
 
   if (!code || !userId) {
     console.log('➡️ חסר code או userId:', { code, userId });
@@ -57,13 +58,18 @@ router.get('/calendar/callback', async (req, res) => {
 
     console.log('✅ משתמש עודכן עם טוקן:', updated.email);
 
-    // הפניה ללקוח עם הפרמטר + העמוד הרצוי
-    res.redirect(`https://taskmanager-client-2pyw.onrender.com/?calendar_connected=true#${returnTo}`);
+    // 📍 הפניה לפי הפלטפורמה
+    if (platform === 'app') {
+      res.redirect('capacitor://localhost');
+    } else {
+      res.redirect(`https://taskmanager-client-2pyw.onrender.com/?calendar_connected=true#${returnTo}`);
+    }
 
   } catch (error) {
     console.error("❌ Google Auth Error:", error.response?.data || error.message);
     res.status(500).send("Authentication failed");
   }
 });
+
 
 module.exports = router;
