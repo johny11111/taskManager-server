@@ -58,12 +58,8 @@ router.get('/calendar/callback', async (req, res) => {
     console.log('✅ משתמש עודכן עם טוקן:', updated.email);
 
     // 🔁 הפניה לפי פלטפורמה
-    if (platform === 'app') {
-      res.redirect('intent://oauth2callback?calendar_connected=true#Intent;scheme=https;package=com.yonatan.taskapp;end');
-    } else {
-      // הפניה לדפדפן עם hash כי זה SPA עם React Router (HashRouter)
-      res.redirect('https://managertask.com/#/oauth2callback?calendar_connected=true&platform=web');
-    }
+    res.redirect('https://managertask.com/oauth2callback?calendar_connected=true');
+
 
   } catch (error) {
     console.error("❌ Google Auth Error:", error.response?.data || error.message);
