@@ -59,10 +59,7 @@ router.get('/calendar/callback', async (req, res) => {
     console.log('✅ משתמש עודכן עם טוקן:', updated.email);
 
     // 📍 הפניה לפי הפלטפורמה
-    res.redirect(`https://managertask.com/oauth2callback?calendar_connected=true&platform=${platform}`);
-
-x
-
+    res.redirect(`https://managertask.com/#/oauth2callback?calendar_connected=true&platform=${platform}`);
 
 
 
