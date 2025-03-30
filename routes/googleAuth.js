@@ -59,7 +59,11 @@ router.get('/calendar/callback', async (req, res) => {
     console.log('✅ משתמש עודכן עם טוקן:', updated.email);
 
     // 📍 הפניה לפי הפלטפורמה
-    res.redirect(`https://managertask.com/#/oauth2callback?calendar_connected=true&platform=${platform}`);
+    if (platform === 'app') {
+      res.redirect('capacitor://localhost/#/oauth2callback?calendar_connected=true&platform=app');
+    } else {
+      res.redirect(`https://managertask.com/#/oauth2callback?calendar_connected=true&platform=web`);
+    }
 
 
 
