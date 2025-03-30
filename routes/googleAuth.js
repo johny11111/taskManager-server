@@ -59,8 +59,7 @@ router.get('/calendar/callback', async (req, res) => {
 
     // 🔁 הפניה לפי פלטפורמה
     if (platform === 'app') {
-      // להפניה ישירה לאפליקציה דרך intent-filter (ללא hash)
-      res.redirect('https://managertask.com/oauth2callback?calendar_connected=true&platform=app');
+      res.redirect('intent://oauth2callback?calendar_connected=true#Intent;scheme=https;package=com.yonatan.taskapp;end');
     } else {
       // הפניה לדפדפן עם hash כי זה SPA עם React Router (HashRouter)
       res.redirect('https://managertask.com/#/oauth2callback?calendar_connected=true&platform=web');
