@@ -36,7 +36,6 @@ router.get('/calendar/callback', async (req, res) => {
   }
 
   const userId = state.userId;
-  const returnTo = state.returnTo || '/teams';
   const platform = state.platform || 'web';
 
   if (!code || !userId) {
@@ -58,20 +57,21 @@ router.get('/calendar/callback', async (req, res) => {
 
     console.log('✅ משתמש עודכן עם טוקן:', updated.email);
 
-    // 📍 הפניה לפי הפלטפורמה
+    // 🔁 הפניה לפי פלטפורמה
     if (platform === 'app') {
-      res.redirect('capacitor://localhost/#/oauth2callback?calendar_connected=true&platform=app');
+      // להפניה ישירה לאפליקציה דרך intent-filter (ללא hash)
+      res.redirect('https://managertask.com/oauth2callback?calendar_connected=true&platform=app');
     } else {
-      res.redirect(`https://managertask.com/#/oauth2callback?calendar_connected=true&platform=web`);
+      // הפניה לדפדפן עם hash כי זה SPA עם React Router (HashRouter)
+      res.redirect('https://managertask.com/#/oauth2callback?calendar_connected=true&platform=web');
     }
-
-
 
   } catch (error) {
     console.error("❌ Google Auth Error:", error.response?.data || error.message);
     res.status(500).send("Authentication failed");
   }
 });
+
 
 
 module.exports = router;
