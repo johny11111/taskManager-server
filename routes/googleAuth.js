@@ -38,6 +38,10 @@ router.get('/calendar/callback', async (req, res) => {
   const userId = state.userId;
   const platform = state.platform || 'web';
 
+  console.log('📦 state:', state);
+  console.log('📱 platform:', platform);
+
+
   if (!code || !userId) {
     console.log('➡️ חסר code או userId:', { code, userId });
     return res.status(400).send("Missing code or userId");
