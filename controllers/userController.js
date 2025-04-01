@@ -30,7 +30,7 @@ exports.sendInvite = async (req, res) => {
             $addToSet: { members: invitedUser._id }
         });
 
-        const inviteLink = `https://taskmanager-client-2pyw.onrender.com/#/login`;
+        const inviteLink = `https://managertask.com/#/login`;
         await sendEmail(email, 'הצטרפות לצוות', `היי  הזמינו אותך לצוות. התחבר כאן: ${inviteLink}`);
     }
 
