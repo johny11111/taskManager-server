@@ -10,7 +10,7 @@ const {
   createTeam,
   sendInvite,
   deleteTeam,
-  getAllUsers,
+  refreshToken,
 } = require('../controllers/userController');
 
 const { authMiddleware } = require('../middleware/auth');
@@ -21,6 +21,7 @@ const router = express.Router();
 router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.post('/logout', logoutUser);
+router.get('/refresh', refreshToken);
 
 // רוטות מוגנות - דורשות התחברות
 router.get('/me', authMiddleware, getCurrentUser);
@@ -30,6 +31,6 @@ router.get('/teams/:teamId', authMiddleware, getTeamById);
 router.post('/teams/create', authMiddleware, createTeam);
 router.delete('/teams/:teamId', authMiddleware, deleteTeam);
 router.post('/invite', authMiddleware, sendInvite);
-router.get('/all', authMiddleware, getAllUsers); // רק אם בשימוש
+
 
 module.exports = router;

@@ -3,7 +3,11 @@ const Team = require("../models/Team")
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { decodeInviteToken } = require('../utils/inviteToken');
-const sendEmail = require('../utils/sendEmail'); 
+const sendEmail = require('../utils/sendEmail');
+const {
+    generateAccessToken,
+    generateRefreshToken,
+} = require('../utils/jwt');
 
 exports.sendInvite = async (req, res) => {
     const { email, teamId } = req.body;
@@ -21,15 +25,15 @@ exports.sendInvite = async (req, res) => {
         await User.findByIdAndUpdate(invitedUser._id, {
             $addToSet: { teams: teamId }
         });
-    
+
         await Team.findByIdAndUpdate(teamId, {
             $addToSet: { members: invitedUser._id }
         });
-    
+
         const inviteLink = `https://taskmanager-client-2pyw.onrender.com/#/login`;
         await sendEmail(email, 'הצטרפות לצוות', `היי  הזמינו אותך לצוות. התחבר כאן: ${inviteLink}`);
     }
-    
+
 
     res.status(200).json({ message: 'ההזמנה נשלחה בהצלחה' });
 };
@@ -75,16 +79,16 @@ exports.registerUser = async (req, res) => {
 
 exports.getCurrentUser = async (req, res) => {
     try {
-      const user = await User.findById(req.user.id);
-      if (!user) return res.status(404).json({ message: 'משתמש לא נמצא' });
-  
-      res.json(user);
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ message: 'משתמש לא נמצא' });
+
+        res.json(user);
     } catch (err) {
-      console.error('שגיאה בשליפת המשתמש:', err);
-      res.status(500).json({ message: 'שגיאה בשרת' });
+        console.error('שגיאה בשליפת המשתמש:', err);
+        res.status(500).json({ message: 'שגיאה בשרת' });
     }
-  };
-  
+};
+
 exports.getTeamMembers = async (req, res) => {
     try {
         const { teamId } = req.query;
@@ -105,44 +109,86 @@ exports.getTeamMembers = async (req, res) => {
     }
 };
 
+
+
 exports.loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
-
         const user = await User.findOne({ email });
         if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        const accessToken = generateAccessToken(user._id);
+        const refreshToken = generateRefreshToken(user._id);
 
-        res.cookie('token', token, {
+        res.cookie('token', accessToken, {
             httpOnly: true,
-            secure: true,           
+            secure: true,
             sameSite: 'None',
-            maxAge: 60 * 60 * 1000  
+            maxAge: 15 * 60 * 1000 // 15 דקות
+        });
+
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'None',
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ימים
         });
 
         res.json({ user: { id: user._id, name: user.name, email: user.email } });
     } catch (error) {
         console.error('❌ Error in loginUser:', error);
-        res.status(500).json({ message: 'Server error', error });
+        res.status(500).json({ message: 'Server error' });
     }
 };
-
 exports.logoutUser = (req, res) => {
     res.clearCookie('token', {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'Strict',
-      path: '/', // 🛠️ חובה – חייב להתאים ל־path של ההגדרה המקורית
+        httpOnly: true,
+        secure: true,
+        sameSite: 'None',
+        path: '/',
     });
+    res.clearCookie('refreshToken', {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'None',
+        path: '/',
+    });
+
     res.json({ message: 'Logged out successfully' });
-  };
-  
+};
 
+// 🔁 ריענון טוקן - מחזיר עוגייה חדשה עם גישה
+exports.refreshToken = async (req, res) => {
+    const refreshToken = req.cookies.refresh_token;
 
+    if (!refreshToken) {
+        return res.status(401).json({ message: 'Missing refresh token' });
+    }
+
+    try {
+        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+        const accessToken = jwt.sign({ id: decoded.id }, process.env.JWT_SECRET, {
+            expiresIn: '1h',
+        });
+
+        res.cookie('token', accessToken, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'None',
+            maxAge: 60 * 60 * 1000, // 1h
+        });
+
+        // אם תרצה – שלח גם את המשתמש עצמו:
+        const user = await User.findById(decoded.id);
+        res.json(user);
+    } catch (err) {
+        console.error('❌ שגיאה באימות Refresh Token:', err);
+        res.status(403).json({ message: 'Invalid refresh token' });
+    }
+};
 exports.getAllUsers = async (req, res) => {
     try {
         const users = await User.find({}, '_id name email'); // מביא רק את ה-ID, השם והמייל
@@ -155,8 +201,8 @@ exports.getAllUsers = async (req, res) => {
 
 exports.addToTeam = async (req, res) => {
     try {
-        const { userId } = req.user; 
-        const { teammateId } = req.body; 
+        const { userId } = req.user;
+        const { teammateId } = req.body;
 
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ message: "משתמש לא נמצא" });
@@ -203,9 +249,9 @@ exports.createTeam = async (req, res) => {
         const newTeam = new Team({
             name,
             members: [req.user.id],
-            createdBy: req.user.id 
-          });
-          
+            createdBy: req.user.id
+        });
+
 
         await newTeam.save();
 
@@ -223,33 +269,33 @@ exports.createTeam = async (req, res) => {
 
 exports.deleteTeam = async (req, res) => {
     try {
-      const { teamId } = req.params;
-      const userId = req.user.id;
-  
-      const team = await Team.findById(teamId);
-      if (!team) {
-        return res.status(404).json({ message: 'Team not found' });
-      }
-  
-      if (team.createdBy.toString() !== userId) {
-        return res.status(403).json({ message: 'רק יוצר הצוות יכול למחוק אותו' });
-      }
-  
-      // הסרת הצוות מכל המשתמשים
-      await User.updateMany(
-        { teams: teamId },
-        { $pull: { teams: teamId } }
-      );
-  
-      // מחיקת הצוות
-      await Team.findByIdAndDelete(teamId);
-  
-      res.status(200).json({ message: 'הצוות נמחק בהצלחה' });
+        const { teamId } = req.params;
+        const userId = req.user.id;
+
+        const team = await Team.findById(teamId);
+        if (!team) {
+            return res.status(404).json({ message: 'Team not found' });
+        }
+
+        if (team.createdBy.toString() !== userId) {
+            return res.status(403).json({ message: 'רק יוצר הצוות יכול למחוק אותו' });
+        }
+
+        // הסרת הצוות מכל המשתמשים
+        await User.updateMany(
+            { teams: teamId },
+            { $pull: { teams: teamId } }
+        );
+
+        // מחיקת הצוות
+        await Team.findByIdAndDelete(teamId);
+
+        res.status(200).json({ message: 'הצוות נמחק בהצלחה' });
     } catch (error) {
-      console.error('❌ Error deleting team:', error);
-      res.status(500).json({ message: 'שגיאה במחיקת הצוות', error });
+        console.error('❌ Error deleting team:', error);
+        res.status(500).json({ message: 'שגיאה במחיקת הצוות', error });
     }
-  };
+};
 
 exports.getTeamById = async (req, res) => {
     try {
