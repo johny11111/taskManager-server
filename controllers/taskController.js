@@ -190,9 +190,9 @@ exports.getTasksByTeam = async (req, res) => {
 
 
 
-const createGoogleCalendarEvent = async (userId, task) => {
+const createGoogleCalendarEvent = async (assignedTo, task) => {
   try {
-    const user = await User.findById(userId);
+    const user = await User.findById(assignedTo);
     if (!user?.googleCalendar?.access_token) {
       console.log("🚫 אין טוקן ליומן עבור המשתמש");
       return;
