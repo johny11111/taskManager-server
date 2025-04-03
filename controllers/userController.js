@@ -19,7 +19,9 @@ exports.sendInvite = async (req, res) => {
         const team = await Team.findById(teamId);
         if (!team) return res.status(404).json({ message: "צוות לא נמצא" });
 
-        const isMember = team.members.find(m => m.userId.toString() === inviter._id.toString());
+        const isMember = team.members.find(
+            m => m.userId && m.userId.toString() === inviter._id.toString()
+          );
         if (!isMember) return res.status(403).json({ message: "אינך חבר בצוות זה" });
 
         const inviteToken = createInviteToken(teamId);
@@ -46,7 +48,8 @@ exports.sendInvite = async (req, res) => {
         
 
         // 🟢 משתמש קיים – הוסף אותו לצוות אם לא כבר חבר
-        const alreadyMember = team.members.find(m => m.userId.toString() === invitedUser._id.toString());
+        const alreadyMember = team.members.find(m => m.userId && m.userId.toString() === invitedUser._id.toString());
+
         if (!alreadyMember) {
             team.members.push({ userId: invitedUser._id, role: 'member' });
             await team.save();
@@ -318,8 +321,9 @@ exports.deleteTeam = async (req, res) => {
         if (!team) return res.status(404).json({ message: 'Team not found' });
 
         const isAdmin = team.members.find(
-            member => member.userId.toString() === userId && member.role === 'admin'
-        );
+            member => member.userId && member.userId.toString() === userId && member.role === 'admin'
+          );
+          
 
         if (!isAdmin) {
             return res.status(403).json({ message: 'Only team admins can delete the team' });
