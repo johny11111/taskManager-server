@@ -23,7 +23,8 @@ const allowedOrigins = [
   'http://localhost:5173',
   'https://taskmanager-client-2pyw.onrender.com',
   'https://localhost',
-  "https://managertask.com"
+  "https://managertask.com",
+  'capacitor://localhost'
 ];
 
 app.use(cors({
