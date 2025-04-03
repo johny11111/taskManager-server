@@ -1,4 +1,5 @@
 const Task = require('../models/Task');
+const Team = require('../models/Team')
 const User = require("../models/User")
 const { google } = require('googleapis');
 const getAuthorizedClient = require('../utils/googleClient');
@@ -168,24 +169,41 @@ exports.getFilteredTasks = async (req, res) => {
 
 
 exports.getTasksByTeam = async (req, res) => {
-    try {
-        const { teamId } = req.params;
+  try {
+    const { teamId } = req.params;
 
-        console.log(`📡 מחפש משימות לצוות ${teamId}`);
-
-        if (!teamId) {
-            return res.status(400).json({ message: 'Team ID is required' });
-        }
-
-        // ודא שהשאילתה תואמת את הדאטהבייס
-        const tasks = await Task.find({ teamId: teamId });
-
-        console.log(`✅ נמצאו ${tasks.length} משימות לצוות`);
-        res.status(200).json(tasks);
-    } catch (error) {
-        console.error('❌ שגיאה בשליפת משימות הצוות:', error);
-        res.status(500).json({ message: 'Server error', error });
+    if (!teamId) {
+      return res.status(400).json({ message: 'Team ID is required' });
     }
+
+    const team = await Team.findById(teamId);
+    if (!team) {
+      return res.status(404).json({ message: 'Team not found' });
+    }
+
+    // חפש את המשתמש בצוות
+    const member = (team.members || []).find(member =>
+      member?.userId && member.userId.toString() === req.user.id
+    );
+    
+    if (!member) {
+      return res.status(403).json({ message: 'You are not a member of this team' });
+    }
+
+    let tasks;
+    if (member.role === 'admin') {
+      // 🧑‍💼 אם הוא מנהל – החזר את כל המשימות בצוות
+      tasks = await Task.find({ teamId });
+    } else {
+      // 👤 אם הוא לא מנהל – החזר רק משימות שהוקצו לו
+      tasks = await Task.find({ teamId, assignedTo: req.user.id });
+    }
+
+    res.status(200).json(tasks);
+  } catch (error) {
+    console.error('❌ שגיאה בשליפת משימות הצוות:', error);
+    res.status(500).json({ message: 'Server error', error });
+  }
 };
 
 

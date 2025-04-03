@@ -2,7 +2,7 @@ const User = require('../models/User');
 const Team = require("../models/Team")
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { decodeInviteToken } = require('../utils/inviteToken');
+const { decodeInviteToken , createInviteToken } = require('../utils/inviteToken');
 const sendEmail = require('../utils/sendEmail');
 const {
     generateAccessToken,
@@ -12,70 +12,110 @@ const {
 exports.sendInvite = async (req, res) => {
     const { email, teamId } = req.body;
 
-    const user = await User.findById(req.user.id);
+    try {
+        const inviter = await User.findById(req.user.id);
+        if (!inviter) return res.status(404).json({ message: "המשתמש שלך לא נמצא" });
 
-    if (!user) return res.status(404).json({ message: "המשתמש שלך לא נמצא" });
+        const team = await Team.findById(teamId);
+        if (!team) return res.status(404).json({ message: "צוות לא נמצא" });
 
-    if (!user.teams || !user.teams.includes(teamId)) {
-        return res.status(400).json({ message: "אינך חבר בצוות זה" });
-    }
-    const invitedUser = await User.findOne({ email });
+        const isMember = team.members.find(m => m.userId.toString() === inviter._id.toString());
+        if (!isMember) return res.status(403).json({ message: "אינך חבר בצוות זה" });
 
-    if (invitedUser) {
+        const inviteToken = createInviteToken(teamId);
+
+        const invitedUser = await User.findOne({ email });
+
+        if (!invitedUser) {
+            const alreadyInvited = (team.members || []).find(m => m && m.email === email);
+            if (!alreadyInvited) {
+                team.members.push({ userId: null, email, role: 'member' });
+                await team.save();
+            }
+        
+            const link = `https://managertask.com/#/register?token=${inviteToken}`;
+            await sendEmail(
+                email,
+                '📩 הוזמנת להצטרף לצוות',
+                `היי 👋 הוזמנת להצטרף לצוות ב־ManagerTask. הירשם כאן: ${link}`
+            );
+        
+            return res.status(200).json({ message: 'ההזמנה נשלחה למשתמש חדש' });
+        }
+        
+        
+
+        // 🟢 משתמש קיים – הוסף אותו לצוות אם לא כבר חבר
+        const alreadyMember = team.members.find(m => m.userId.toString() === invitedUser._id.toString());
+        if (!alreadyMember) {
+            team.members.push({ userId: invitedUser._id, role: 'member' });
+            await team.save();
+        }
+
         await User.findByIdAndUpdate(invitedUser._id, {
             $addToSet: { teams: teamId }
         });
 
-        await Team.findByIdAndUpdate(teamId, {
-            $addToSet: { members: invitedUser._id }
-        });
+        // 🔗 שלח קישור התחברות עם טוקן
+        const link = `https://managertask.com/#/login?token=${inviteToken}`;
+        await sendEmail(
+            email,
+            '📩 הוזמנת להצטרף לצוות',
+            `היי 👋 הוזמנת להצטרף לצוות. התחבר כאן: ${link}`
+        );
 
-        const inviteLink = `https://managertask.com/#/login`;
-        await sendEmail(email, 'הצטרפות לצוות', `היי  הזמינו אותך לצוות. התחבר כאן: ${inviteLink}`);
+        res.status(200).json({ message: 'ההזמנה נשלחה למשתמש קיים' });
+
+    } catch (error) {
+        console.error('❌ שגיאה בשליחת הזמנה:', error);
+        res.status(500).json({ message: 'שגיאה בשליחת ההזמנה', error });
     }
-
-
-    res.status(200).json({ message: 'ההזמנה נשלחה בהצלחה' });
 };
+
 
 exports.registerUser = async (req, res) => {
     try {
-        const { name, email, password, token } = req.body;
-
-        let existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ message: 'User already exists' });
+      const { name, email, password, token } = req.body;
+  
+      let existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({ message: 'User already exists' });
+      }
+  
+      let teams = [];
+      if (token) {
+        const decoded = decodeInviteToken(token);
+        const teamId = decoded.teamId;
+        teams.push(teamId);
+      }
+  
+      const newUser = new User({ name, email, password, teams });
+      await newUser.save();
+  
+      // הוסף את המשתמש לצוותים עם תפקיד 'member'
+      if (teams.length > 0) {
+        for (const teamId of teams) {
+          const team = await Team.findById(teamId);
+          if (!team) continue;
+  
+          const alreadyInTeam = team.members.find(m => m.userId?.toString() === newUser._id.toString());
+          if (!alreadyInTeam) {
+              // 🔁 עדכן חבר עם אותו מייל
+              await Team.updateOne(
+                  { _id: team._id, "members.email": email },
+                  { $set: { "members.$.userId": newUser._id } }
+              );
+          }
         }
-
-        let teams = [];
-        if (token) {
-            const decoded = decodeInviteToken(token);
-            const teamId = decoded.teamId;
-            teams.push(teamId);
-
-            // הוסף את המשתמש לצוות קיים
-            await Team.findByIdAndUpdate(teamId, {
-                $addToSet: { members: existingUser ? existingUser._id : null }
-            });
-        }
-
-        const newUser = new User({ name, email, password, teams });
-        await newUser.save();
-
-        // עדכן גם את הצוות במשתמש החדש
-        if (teams.length > 0) {
-            await Team.updateMany(
-                { _id: { $in: teams } },
-                { $addToSet: { members: newUser._id } }
-            );
-        }
-
-        res.status(201).json({ message: 'User registered successfully', teams });
+      }
+  
+      res.status(201).json({ message: 'User registered successfully', teams });
     } catch (error) {
-        console.error('❌ Error in registerUser:', error);
-        res.status(500).json({ message: 'Server error', error });
+      console.error('❌ Error in registerUser:', error);
+      res.status(500).json({ message: 'Server error', error });
     }
-};
+  };
+  
 
 exports.getCurrentUser = async (req, res) => {
     try {
@@ -91,25 +131,27 @@ exports.getCurrentUser = async (req, res) => {
 
 exports.getTeamMembers = async (req, res) => {
     try {
-        const { teamId } = req.query;
+      const { teamId } = req.query;
+  
+      if (!teamId) {
+        return res.status(400).json({ message: 'חסר teamId בבקשה' });
+      }
+  
+      const team = await Team.findById(teamId).populate('members.userId', 'name email');
+      if (!team) {
+        return res.status(404).json({ message: 'Team not found' });
+      }
+  
+      const validMembers = (team.members || []).filter(m => m && m.userId);
 
-        if (!teamId) {
-            return res.status(400).json({ message: 'חסר teamId בבקשה' });
-        }
-
-        const team = await Team.findById(teamId).populate('members', '_id name email');
-        if (!team) {
-            return res.status(404).json({ message: 'Team not found' });
-        }
-
-        res.status(200).json(team.members);
+  
+      res.status(200).json(validMembers);
     } catch (error) {
-        console.error('❌ Error fetching team members:', error);
-        res.status(500).json({ message: 'שגיאה בקבלת חברי הצוות', error });
+      console.error('❌ Error fetching team members:', error);
+      res.status(500).json({ message: 'שגיאה בקבלת חברי הצוות', error });
     }
-};
-
-
+  };
+  
 
 exports.loginUser = async (req, res) => {
     try {
@@ -240,30 +282,30 @@ exports.getTeams = async (req, res) => {
     }
 };
 
-
 exports.createTeam = async (req, res) => {
     try {
         const { name } = req.body;
-        if (!name) return res.status(400).json({ message: 'שם הצוות נדרש' });
+        const userId = req.user.id;
+
+        if (!name) return res.status(400).json({ message: 'Team name is required' });
 
         const newTeam = new Team({
             name,
-            members: [req.user.id],
-            createdBy: req.user.id
+            createdBy: userId,
+            members: [{ userId, role: 'admin' }]
         });
-
 
         await newTeam.save();
 
-        // עדכון המשתמש היוצר להוספת הצוות לרשימת הצוותים שלו
-        await User.findByIdAndUpdate(req.user.id, {
-            $push: { teams: newTeam._id }
+        // הוסף את הצוות לרשימת הצוותים של המשתמש
+        await User.findByIdAndUpdate(userId, {
+            $addToSet: { teams: newTeam._id }
         });
 
-        res.status(201).json({ message: 'Team created successfully', team: newTeam });
+        res.status(201).json({ team: newTeam }); // חשוב!
     } catch (error) {
         console.error('❌ Error creating team:', error);
-        res.status(500).json({ message: 'Error creating team', error: error.message });
+        res.status(500).json({ message: 'Error creating team', error });
     }
 };
 
@@ -273,29 +315,24 @@ exports.deleteTeam = async (req, res) => {
         const userId = req.user.id;
 
         const team = await Team.findById(teamId);
-        if (!team) {
-            return res.status(404).json({ message: 'Team not found' });
-        }
+        if (!team) return res.status(404).json({ message: 'Team not found' });
 
-        if (team.createdBy.toString() !== userId) {
-            return res.status(403).json({ message: 'רק יוצר הצוות יכול למחוק אותו' });
-        }
-
-        // הסרת הצוות מכל המשתמשים
-        await User.updateMany(
-            { teams: teamId },
-            { $pull: { teams: teamId } }
+        const isAdmin = team.members.find(
+            member => member.userId.toString() === userId && member.role === 'admin'
         );
 
-        // מחיקת הצוות
-        await Team.findByIdAndDelete(teamId);
+        if (!isAdmin) {
+            return res.status(403).json({ message: 'Only team admins can delete the team' });
+        }
 
-        res.status(200).json({ message: 'הצוות נמחק בהצלחה' });
+        await team.deleteOne();
+        res.status(200).json({ message: 'Team deleted successfully' });
     } catch (error) {
         console.error('❌ Error deleting team:', error);
-        res.status(500).json({ message: 'שגיאה במחיקת הצוות', error });
+        res.status(500).json({ message: 'Error deleting team', error });
     }
 };
+
 
 exports.getTeamById = async (req, res) => {
     try {
