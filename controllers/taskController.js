@@ -186,6 +186,8 @@ exports.getTasksByTeam = async (req, res) => {
       member?.userId && member.userId.toString() === req.user.id
     );
 
+    console.log('🧪 req.user.id:', req.user.id);
+    console.log('🧪 team.members:', team.members);
     if (!member) {
       return res.status(403).json({ message: 'You are not a member of this team' });
     }
@@ -205,7 +207,7 @@ exports.getTasksByTeam = async (req, res) => {
     res.status(500).json({ message: 'Server error', error });
   }
 };
-  
+
 
 
 const createGoogleCalendarEvent = async (assignedTo, task) => {
@@ -269,7 +271,7 @@ exports.createTaskForTeam = async (req, res) => {
           title,
           description,
           assignedTo: member.userId._id,
-          createdBy: req.user._id,
+          createdBy: req.user.id,
           dueDate,
           teamId
         });

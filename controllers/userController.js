@@ -2,7 +2,7 @@ const User = require('../models/User');
 const Team = require("../models/Team")
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { decodeInviteToken , createInviteToken } = require('../utils/inviteToken');
+const { decodeInviteToken, createInviteToken } = require('../utils/inviteToken');
 const sendEmail = require('../utils/sendEmail');
 const {
     generateAccessToken,
@@ -21,7 +21,7 @@ exports.sendInvite = async (req, res) => {
 
         const isMember = team.members.find(
             m => m.userId && m.userId.toString() === inviter._id.toString()
-          );
+        );
         if (!isMember) return res.status(403).json({ message: "אינך חבר בצוות זה" });
 
         const inviteToken = createInviteToken(teamId);
@@ -34,18 +34,18 @@ exports.sendInvite = async (req, res) => {
                 team.members.push({ userId: null, email, role: 'member' });
                 await team.save();
             }
-        
-            const link = `https://managertask.com/#/register?token=${inviteToken}`;
+
+            const link = `http://localhost:5173/#/register?token=${inviteToken}`;
             await sendEmail(
                 email,
                 '📩 הוזמנת להצטרף לצוות',
                 `היי 👋 הוזמנת להצטרף לצוות ב־ManagerTask. הירשם כאן: ${link}`
             );
-        
+
             return res.status(200).json({ message: 'ההזמנה נשלחה למשתמש חדש' });
         }
-        
-        
+
+
 
         // 🟢 משתמש קיים – הוסף אותו לצוות אם לא כבר חבר
         const alreadyMember = team.members.find(m => m.userId && m.userId.toString() === invitedUser._id.toString());
@@ -78,47 +78,64 @@ exports.sendInvite = async (req, res) => {
 
 exports.registerUser = async (req, res) => {
     try {
-      const { name, email, password, token } = req.body;
-  
-      let existingUser = await User.findOne({ email });
-      if (existingUser) {
-        return res.status(400).json({ message: 'User already exists' });
-      }
-  
-      let teams = [];
-      if (token) {
-        const decoded = decodeInviteToken(token);
-        const teamId = decoded.teamId;
-        teams.push(teamId);
-      }
-  
-      const newUser = new User({ name, email, password, teams });
-      await newUser.save();
-  
-      // הוסף את המשתמש לצוותים עם תפקיד 'member'
-      if (teams.length > 0) {
-        for (const teamId of teams) {
-          const team = await Team.findById(teamId);
-          if (!team) continue;
-  
-          const alreadyInTeam = team.members.find(m => m.userId?.toString() === newUser._id.toString());
-          if (!alreadyInTeam) {
-              // 🔁 עדכן חבר עם אותו מייל
-              await Team.updateOne(
-                  { _id: team._id, "members.email": email },
-                  { $set: { "members.$.userId": newUser._id } }
-              );
-          }
+        const { name, email, password, token } = req.body;
+
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ message: 'User already exists' });
         }
-      }
-  
-      res.status(201).json({ message: 'User registered successfully', teams });
+
+        let teams = [];
+        if (token) {
+            const decoded = decodeInviteToken(token);
+            const teamId = decoded.teamId;
+            teams.push(teamId);
+        }
+
+        const newUser = new User({ name, email, password, teams });
+        await newUser.save();
+
+        // 🧩 שיוך לצוותים
+        for (const teamId of teams) {
+            const team = await Team.findById(teamId);
+            if (!team) continue;
+
+            let updated = false;
+
+            // עדכון placeholder לפי אימייל
+            for (let member of team.members) {
+                if (member.email === email && !member.userId) {
+                    console.log(`🧠 מעדכן placeholder של ${email} עם userId ${newUser._id}`);
+                    member.userId = newUser._id;
+                    updated = true;
+                    break;
+                }
+            }
+
+            // אם לא עודכן – מוסיפים אותו כ־member חדש
+            if (!updated) {
+                const alreadyInTeam = team.members.some(
+                    m => m.userId?.toString() === newUser._id.toString()
+                );
+                if (!alreadyInTeam) {
+                    console.log(`➕ מוסיף את ${email} לצוות כ־member`);
+                    team.members.push({ userId: newUser._id, role: "member" });
+                }
+            }
+
+            await team.save();
+            console.log(`🧩 ${newUser.email} שויך לצוות ${team.name}`);
+        }
+
+        res.status(201).json({ message: 'User registered successfully', teams });
     } catch (error) {
-      console.error('❌ Error in registerUser:', error);
-      res.status(500).json({ message: 'Server error', error });
+        console.error('❌ Error in registerUser:', error);
+        res.status(500).json({ message: 'Server error', error });
     }
-  };
-  
+};
+
+
+
 
 exports.getCurrentUser = async (req, res) => {
     try {
@@ -134,27 +151,27 @@ exports.getCurrentUser = async (req, res) => {
 
 exports.getTeamMembers = async (req, res) => {
     try {
-      const { teamId } = req.query;
-  
-      if (!teamId) {
-        return res.status(400).json({ message: 'חסר teamId בבקשה' });
-      }
-  
-      const team = await Team.findById(teamId).populate('members.userId', 'name email');
-      if (!team) {
-        return res.status(404).json({ message: 'Team not found' });
-      }
-  
-      const validMembers = (team.members || []).filter(m => m && m.userId);
+        const { teamId } = req.query;
 
-  
-      res.status(200).json(validMembers);
+        if (!teamId) {
+            return res.status(400).json({ message: 'חסר teamId בבקשה' });
+        }
+
+        const team = await Team.findById(teamId).populate('members.userId', 'name email');
+        if (!team) {
+            return res.status(404).json({ message: 'Team not found' });
+        }
+
+        const validMembers = (team.members || []).filter(m => m && m.userId);
+
+
+        res.status(200).json(validMembers);
     } catch (error) {
-      console.error('❌ Error fetching team members:', error);
-      res.status(500).json({ message: 'שגיאה בקבלת חברי הצוות', error });
+        console.error('❌ Error fetching team members:', error);
+        res.status(500).json({ message: 'שגיאה בקבלת חברי הצוות', error });
     }
-  };
-  
+};
+
 
 exports.loginUser = async (req, res) => {
     try {
@@ -246,22 +263,38 @@ exports.getAllUsers = async (req, res) => {
 
 exports.addToTeam = async (req, res) => {
     try {
-        const { userId } = req.user;
+        const { id: userId } = req.user;
         const { teammateId } = req.body;
 
         const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: "משתמש לא נמצא" });
+        const team = await Team.findById(teammateId);
 
-        if (!user.team.includes(teammateId)) {
-            user.team.push(teammateId);
+        if (!user) return res.status(404).json({ message: "משתמש לא נמצא" });
+        if (!team) return res.status(404).json({ message: "צוות לא נמצא" });
+
+        // הוספה לצוות במודל המשתמש
+        if (!user.teams.includes(teammateId)) {
+            user.teams.push(teammateId);
             await user.save();
+        }
+
+        // הוספה לצוות במודל הצוות
+        const alreadyMember = team.members.some(
+            member => member.userId?.toString() === user._id.toString()
+        );
+
+        if (!alreadyMember) {
+            team.members.push({ userId: user._id, role: 'member' });
+            await team.save();
         }
 
         res.status(200).json({ message: "משתמש נוסף לצוות בהצלחה" });
     } catch (error) {
+        console.error("❌ שגיאה בהוספת משתמש לצוות:", error);
         res.status(500).json({ message: "שגיאה בהוספת משתמש לצוות", error });
     }
 };
+
 
 // ✅ קבלת רשימת חברי הצוות
 exports.getTeam = async (req, res) => {
@@ -322,8 +355,8 @@ exports.deleteTeam = async (req, res) => {
 
         const isAdmin = team.members.find(
             member => member.userId && member.userId.toString() === userId && member.role === 'admin'
-          );
-          
+        );
+
 
         if (!isAdmin) {
             return res.status(403).json({ message: 'Only team admins can delete the team' });
