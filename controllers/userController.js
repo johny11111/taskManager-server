@@ -35,7 +35,7 @@ exports.sendInvite = async (req, res) => {
                 await team.save();
             }
 
-            const link = `http://localhost:5173/#/register?token=${inviteToken}`;
+            const link = `https://managertask.com/#/register?token=${inviteToken}`;
             await sendEmail(
                 email,
                 '📩 הוזמנת להצטרף לצוות',
