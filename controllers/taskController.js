@@ -33,14 +33,31 @@ exports.getTasks = async (req, res) => {
 
 const updateGoogleCalendarEvent = async (userId, task) => {
   try {
+    if (!task?.googleEventId) {
+      console.warn("⚠️ אין googleEventId לעדכון.");
+      return;
+    }
+
     const user = await User.findById(userId);
-    if (!user?.googleCalendar?.access_token || !task.googleEventId) return;
+    if (!user?.googleCalendar?.access_token) {
+      console.warn("⚠️ אין גישה ליומן Google עבור המשתמש:", userId);
+      return;
+    }
 
     const oauth2Client = getAuthorizedClient(user);
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     const startTime = new Date(task.dueDate);
-    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+    const endTime = new Date(startTime.getTime() + (task.duration || 60) * 60 * 1000);
+
+    const formatRecurrenceDate = (date) => {
+      return new Date(date).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    };
+
+    const recurrenceRule =
+      task.recurrence !== 'none' && task.recurrenceEndDate
+        ? [`RRULE:FREQ=${task.recurrence.toUpperCase()};UNTIL=${formatRecurrenceDate(task.recurrenceEndDate)}`]
+        : undefined;
 
     await calendar.events.update({
       calendarId: 'primary',
@@ -56,35 +73,52 @@ const updateGoogleCalendarEvent = async (userId, task) => {
           dateTime: endTime.toISOString(),
           timeZone: 'Asia/Jerusalem',
         },
+        ...(recurrenceRule ? { recurrence: recurrenceRule } : { recurrence: [] }) // הסרה אם אין יותר חזרתיות
       },
     });
 
     console.log("📝 אירוע עודכן ביומן Google");
   } catch (err) {
-    console.error("❌ שגיאה בעדכון אירוע ביומן:", err.message);
+    console.error("❌ שגיאה בעדכון אירוע ביומן:", err.response?.data || err.message);
   }
 };
+
+
 
 // 📌 עדכון משימה קיימת
 exports.updateTask = async (req, res) => {
   try {
-    const { title, description, status, assignedTo, dueDate } = req.body;
+    const {
+      title,
+      description,
+      status,
+      assignedTo,
+      dueDate,
+      type,
+      duration,
+      recurrence,
+      recurrenceEndDate
+    } = req.body;
 
     const task = await Task.findById(req.params.id);
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
     }
 
-    task.title = title || task.title;
-    task.description = description || task.description;
-    task.status = status || task.status;
-    task.assignedTo = assignedTo || task.assignedTo;
-    task.dueDate = dueDate || task.dueDate;
+    task.title = title ?? task.title;
+    task.description = description ?? task.description;
+    task.status = status ?? task.status;
+    task.assignedTo = assignedTo ?? task.assignedTo;
+    task.dueDate = dueDate ?? task.dueDate;
+    task.type = type ?? task.type;
+    task.duration = duration ?? task.duration;
+    task.recurrence = recurrence ?? task.recurrence;
+    task.recurrenceEndDate = recurrenceEndDate ?? task.recurrenceEndDate;
 
     const updatedTask = await task.save();
 
     if (task.googleEventId) {
-      await updateGoogleCalendarEvent(req.user.id, updatedTask);
+      await updateGoogleCalendarEvent(task.assignedTo, updatedTask); // ✅ סנכרון עם בעל האירוע
     }
 
     res.status(200).json(updatedTask);
@@ -95,18 +129,24 @@ exports.updateTask = async (req, res) => {
 };
 
 
-const deleteGoogleCalendarEvent = async (userId, eventId) => {
+
+
+const deleteGoogleCalendarEvent = async (calendarOwnerId, eventId) => {
   try {
+    if (!eventId) {
+      console.warn("🚫 לא נשלח eventId למחיקה.");
+      return;
+    }
+
     console.log("📌 מנסה למחוק אירוע מהיומן:", eventId);
-    const user = await User.findById(userId);
-    if (!user?.googleCalendar?.access_token || !eventId) return;
 
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({
-      access_token: user.googleCalendar.access_token,
-      refresh_token: user.googleCalendar.refresh_token
-    });
+    const user = await User.findById(calendarOwnerId);
+    if (!user?.googleCalendar?.access_token) {
+      console.warn("🚫 אין גישה ליומן Google עבור המשתמש:", calendarOwnerId);
+      return;
+    }
 
+    const oauth2Client = getAuthorizedClient(user); // שימוש תקני
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     await calendar.events.delete({
@@ -114,11 +154,16 @@ const deleteGoogleCalendarEvent = async (userId, eventId) => {
       eventId
     });
 
-    console.log('🗑️ אירוע נמחק מהיומן');
+    console.log('🗑️ האירוע נמחק מהיומן בהצלחה');
   } catch (err) {
-    console.error('❌ שגיאה במחיקת אירוע מהיומן:', err.message);
+    if (err.code === 404) {
+      console.warn('⚠️ האירוע לא נמצא ביומן – ייתכן שכבר נמחק');
+    } else {
+      console.error('❌ שגיאה במחיקת האירוע מהיומן:', err.response?.data || err.message);
+    }
   }
 };
+
 
 exports.deleteTask = async (req, res) => {
   try {
@@ -127,9 +172,19 @@ exports.deleteTask = async (req, res) => {
       return res.status(404).json({ message: 'Task not found' });
     }
 
-    // 🧠 נסה למחוק גם את האירוע מהיומן אם יש googleEventId
+    // 🗓️ אם זו פגישה חוזרת והמשתמש ביקש למחוק את כל הסדרה
+    if (task.recurrence !== 'none' && req.query.deleteSeries === 'true') {
+      if (task.googleEventId) {
+        await deleteGoogleCalendarEvent(task.assignedTo, task.googleEventId);
+      }
+
+      await task.deleteOne();
+      return res.status(200).json({ message: 'פגישה חוזרת נמחקה' });
+    }
+
+    // 🧹 מחיקת משימה רגילה או מופע בודד
     if (task.googleEventId) {
-      await deleteGoogleCalendarEvent(req.user.id, task.googleEventId);
+      await deleteGoogleCalendarEvent(task.assignedTo, task.googleEventId);
     }
 
     await task.deleteOne();
@@ -139,6 +194,8 @@ exports.deleteTask = async (req, res) => {
     res.status(500).json({ message: 'Error deleting task', error });
   }
 };
+
+
 
 
 
@@ -222,7 +279,16 @@ const createGoogleCalendarEvent = async (assignedTo, task) => {
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     const startTime = new Date(task.dueDate);
-    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+    const endTime = new Date(startTime.getTime() + (task.duration || 60) * 60 * 1000);
+
+    // פונקציית עזר לפורמט נכון של UNTIL
+    const formatRecurrenceDate = (date) => {
+      return new Date(date).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    };
+
+    const recurrenceRule = (task.recurrence !== 'none' && task.recurrenceEndDate)
+      ? [`RRULE:FREQ=${task.recurrence.toUpperCase()};UNTIL=${formatRecurrenceDate(task.recurrenceEndDate)}`]
+      : undefined;
 
     const eventResponse = await calendar.events.insert({
       calendarId: 'primary',
@@ -237,6 +303,7 @@ const createGoogleCalendarEvent = async (assignedTo, task) => {
           dateTime: endTime.toISOString(),
           timeZone: 'Asia/Jerusalem',
         },
+        ...(recurrenceRule && { recurrence: recurrenceRule })
       },
     });
 
@@ -250,60 +317,76 @@ const createGoogleCalendarEvent = async (assignedTo, task) => {
 };
 
 
+
 exports.createTaskForTeam = async (req, res) => {
   try {
-    const { title, description, assignedTo, dueDate } = req.body;
+    const {
+      title,
+      description,
+      assignedTo,
+      dueDate,
+      type = 'task',
+      duration,
+      recurrence = 'none',
+      recurrenceEndDate
+    } = req.body;
+
     const { teamId } = req.params;
 
-    if (!title || !assignedTo || !teamId) {
-      return res.status(400).json({ message: 'Title, assignedTo, and teamId are required' });
+    if (!title || !assignedTo || !teamId || !dueDate) {
+      return res.status(400).json({ message: 'Missing required fields' });
     }
+
+    const baseTaskData = {
+      title,
+      description,
+      createdBy: req.user.id,
+      teamId,
+      type,
+      duration,
+      recurrence,
+      recurrenceEndDate
+    };
+
+    const createAndSaveTask = async (userId) => {
+      const newTask = new Task({
+        ...baseTaskData,
+        dueDate,
+        assignedTo: userId
+      });
+
+      await newTask.save();
+      await createGoogleCalendarEvent(userId, newTask);
+      return newTask;
+    };
 
     // הקצאה לכולם
     if (assignedTo === 'all') {
       const team = await Team.findById(teamId).populate('members.userId');
       const createdTasks = [];
+      const createdUserIds = new Set();
 
       for (const member of team.members) {
-        if (!member.userId) continue; // 🛡 דילוג על חברים לא תקפים
+        const userId = member.userId?._id?.toString();
+        if (!userId || createdUserIds.has(userId)) continue;
 
-        const newTask = new Task({
-          title,
-          description,
-          assignedTo: member.userId._id,
-          createdBy: req.user.id,
-          dueDate,
-          teamId
-        });
-
-        await newTask.save();
-        await createGoogleCalendarEvent(member.userId._id, newTask);
-        createdTasks.push(newTask);
+        createdUserIds.add(userId);
+        const task = await createAndSaveTask(userId);
+        createdTasks.push(task);
       }
 
       return res.status(201).json({ message: 'המשימה הוקצתה לכולם', tasks: createdTasks });
     }
 
     // הקצאה למשתמש בודד
-    const newTask = new Task({
-      title,
-      description,
-      assignedTo,
-      createdBy: req.user.id,
-      dueDate,
-      teamId
-    });
+    const newTask = await createAndSaveTask(assignedTo);
+    return res.status(201).json(newTask);
 
-    await newTask.save();
-    await createGoogleCalendarEvent(req.user.id, newTask);
-
-    res.status(201).json(newTask);
   } catch (error) {
     console.error('❌ Error creating task:', error);
     res.status(500).json({ message: 'Error creating task', error });
   }
 };
-
 
 
 exports.syncOpenTasksToCalendar = async (req, res) => {
@@ -313,20 +396,19 @@ exports.syncOpenTasksToCalendar = async (req, res) => {
       return res.status(400).json({ message: 'יומן Google לא מחובר' });
     }
 
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({
-      access_token: user.googleCalendar.access_token,
-      refresh_token: user.googleCalendar.refresh_token,
-    });
-
+    const oauth2Client = getAuthorizedClient(user); // ✅ שימוש נכון
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    // משימות פתוחות שטרם סונכרנו
+    // סינון רק משימות שלא סונכרנו
     const tasks = await Task.find({
       assignedTo: user._id,
       status: 'pending',
-      googleEventId: { $exists: false },
+      googleEventId: { $exists: false }
     });
+
+    const formatRecurrenceDate = (date) => {
+      return new Date(date).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    };
 
     let addedCount = 0;
 
@@ -334,7 +416,12 @@ exports.syncOpenTasksToCalendar = async (req, res) => {
       if (!task.dueDate) continue;
 
       const start = new Date(task.dueDate);
-      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      const end = new Date(start.getTime() + (task.duration || 60) * 60 * 1000);
+
+      const recurrenceRule =
+        task.recurrence !== 'none' && task.recurrenceEndDate
+          ? [`RRULE:FREQ=${task.recurrence.toUpperCase()};UNTIL=${formatRecurrenceDate(task.recurrenceEndDate)}`]
+          : undefined;
 
       try {
         const response = await calendar.events.insert({
@@ -350,6 +437,7 @@ exports.syncOpenTasksToCalendar = async (req, res) => {
               dateTime: end.toISOString(),
               timeZone: 'Asia/Jerusalem',
             },
+            ...(recurrenceRule && { recurrence: recurrenceRule }),
           },
         });
 
@@ -357,7 +445,7 @@ exports.syncOpenTasksToCalendar = async (req, res) => {
         await task.save();
         addedCount++;
       } catch (err) {
-        console.error('❌ שגיאה בהוספת אירוע:', err.message);
+        console.error('❌ שגיאה בהוספת אירוע:', err.response?.data || err.message);
       }
     }
 
@@ -367,5 +455,7 @@ exports.syncOpenTasksToCalendar = async (req, res) => {
     res.status(500).json({ message: 'שגיאה בסנכרון ליומן', error: err.message });
   }
 };
+
+
 
 
