@@ -14,10 +14,10 @@ exports.sendInvite = async (req, res) => {
 
     try {
         const inviter = await User.findById(req.user.id);
-        if (!inviter) return res.status(404).json({ message: "המשתמש שלך לא נמצא" });
+        if (!inviter) return res.status(404).json({ message: "user not found" });
 
         const team = await Team.findById(teamId);
-        if (!team) return res.status(404).json({ message: "צוות לא נמצא" });
+        if (!team) return res.status(404).json({ message: "team not found" });
 
         const isMember = team.members.find(
             m => m.userId && m.userId.toString() === inviter._id.toString()
@@ -59,7 +59,7 @@ exports.sendInvite = async (req, res) => {
             $addToSet: { teams: teamId }
         });
 
-        // 🔗 שלח קישור התחברות עם טוקן
+
         const link = `https://managertask.com/#/login?token=${inviteToken}`;
         await sendEmail(
             email,
@@ -102,7 +102,6 @@ exports.registerUser = async (req, res) => {
 
             let updated = false;
 
-            // עדכון placeholder לפי אימייל
             for (let member of team.members) {
                 if (member.email === email && !member.userId) {
                     console.log(`🧠 מעדכן placeholder של ${email} עם userId ${newUser._id}`);
@@ -112,7 +111,7 @@ exports.registerUser = async (req, res) => {
                 }
             }
 
-            // אם לא עודכן – מוסיפים אותו כ־member חדש
+        
             if (!updated) {
                 const alreadyInTeam = team.members.some(
                     m => m.userId?.toString() === newUser._id.toString()
@@ -189,14 +188,14 @@ exports.loginUser = async (req, res) => {
             httpOnly: true,
             secure: true,
             sameSite: 'None',
-            maxAge: 15 * 60 * 1000 // 15 דקות
+            maxAge: 15 * 60 * 1000 // 15m
         });
 
         res.cookie('refreshToken', refreshToken, {
             httpOnly: true,
             secure: true,
             sameSite: 'None',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 ימים
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7D
         });
 
         res.json({ user: { id: user._id, name: user.name, email: user.email } });
@@ -222,7 +221,7 @@ exports.logoutUser = (req, res) => {
     res.json({ message: 'Logged out successfully' });
 };
 
-// 🔁 ריענון טוקן - מחזיר עוגייה חדשה עם גישה
+
 exports.refreshToken = async (req, res) => {
     const refreshToken = req.cookies.refresh_token;
 
@@ -243,7 +242,7 @@ exports.refreshToken = async (req, res) => {
             maxAge: 60 * 60 * 1000, // 1h
         });
 
-        // אם תרצה – שלח גם את המשתמש עצמו:
+        
         const user = await User.findById(decoded.id);
         res.json(user);
     } catch (err) {
