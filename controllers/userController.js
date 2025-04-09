@@ -387,4 +387,38 @@ exports.getTeamById = async (req, res) => {
 };
 
 
+exports.promoteToAdmin = async (req, res) => {
+    const { teamId } = req.params;
+    const { email } = req.body;
+  
+    try {
+      const team = await Team.findById(teamId);
+      if (!team) return res.status(404).json({ message: 'Team not found' });
+  
+      const currentUser = team.members.find(m =>
+        m.userId?.toString() === req.user.id && m.role === 'admin'
+      );
+      if (!currentUser) return res.status(403).json({ message: 'Unauthorized' });
+  
+      const userToPromote = await User.findOne({ email });
+      if (!userToPromote) return res.status(404).json({ message: 'User not found' });
+  
+      const memberEntry = team.members.find(m =>
+        m.userId?.toString() === userToPromote._id.toString()
+      );
+  
+      if (!memberEntry) return res.status(400).json({ message: 'User is not in the team' });
+  
+      memberEntry.role = 'admin';
+      await team.save();
+  
+      res.status(200).json({ message: 'User promoted to admin successfully' });
+    } catch (err) {
+      console.error('❌ Error promoting user:', err);
+      res.status(500).json({ message: 'Server error', error: err });
+    }
+  };
+  
+
+
 

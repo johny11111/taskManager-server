@@ -11,6 +11,7 @@ const {
   sendInvite,
   deleteTeam,
   refreshToken,
+  promoteToAdmin
 } = require('../controllers/userController');
 
 const { authMiddleware } = require('../middleware/auth');
@@ -30,6 +31,7 @@ router.get('/teams', authMiddleware, getTeams);
 router.get('/teams/:teamId', authMiddleware, getTeamById);
 router.post('/teams/create', authMiddleware, createTeam);
 router.delete('/teams/:teamId', authMiddleware, deleteTeam);
+router.put('/teams/:teamId/promote', authMiddleware, promoteToAdmin);
 router.post('/invite', authMiddleware, sendInvite);
 
 
