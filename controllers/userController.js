@@ -294,7 +294,28 @@ exports.addToTeam = async (req, res) => {
     }
 };
 
-
+exports.updateTeamName = async (req, res) => {
+    try {
+      const { teamId } = req.params;
+      const { name } = req.body;
+      const userId = req.user.id;
+  
+      if (!name) return res.status(400).json({ message: 'Team name is required' });
+  
+      // ודא שהמשתמש חבר בצוות
+      const team = await Team.findOne({ _id: teamId, 'members.userId': userId });
+      if (!team) return res.status(404).json({ message: 'Team not found or access denied' });
+  
+      team.name = name;
+      await team.save();
+  
+      res.status(200).json({ team });
+    } catch (error) {
+      console.error('❌ Error updating team name:', error);
+      res.status(500).json({ message: 'Error updating team name', error });
+    }
+  };
+  
 // ✅ קבלת רשימת חברי הצוות
 exports.getTeam = async (req, res) => {
     try {
