@@ -25,55 +25,58 @@ exports.sendInvite = async (req, res) => {
         if (!isMember) return res.status(403).json({ message: "אינך חבר בצוות זה" });
 
         const inviteToken = createInviteToken(teamId);
+        const invitedUser = email ? await User.findOne({ email }) : null;
 
-        const invitedUser = await User.findOne({ email });
+        const inviteLink = invitedUser
+            ? `https://managertask.com/#/login?token=${inviteToken}`
+            : `https://managertask.com/#/register?token=${inviteToken}`;
 
-        if (!invitedUser) {
-            const alreadyInvited = (team.members || []).find(m => m && m.email === email);
-            if (!alreadyInvited) {
-                team.members.push({ userId: null, email, role: 'member' });
+        // שלח מייל רק אם יש אימייל
+        if (email) {
+            if (!invitedUser) {
+                const alreadyInvited = team.members.find(m => m && m.email === email);
+                if (!alreadyInvited) {
+                    team.members.push({ userId: null, email, role: 'member' });
+                    await team.save();
+                }
+
+                await sendEmail(
+                    email,
+                    '📩 הוזמנת להצטרף לצוות',
+                    `היי 👋 הוזמנת להצטרף לצוות ב־ManagerTask. הירשם כאן: ${inviteLink}`
+                );
+
+                return res.status(200).json({ message: 'ההזמנה נשלחה למשתמש חדש', inviteLink });
+            }
+
+            const alreadyMember = team.members.find(m => m.userId?.toString() === invitedUser._id.toString());
+            if (!alreadyMember) {
+                team.members.push({ userId: invitedUser._id, role: 'member' });
                 await team.save();
             }
 
-            const link = `https://managertask.com/#/register?token=${inviteToken}`;
+            await User.findByIdAndUpdate(invitedUser._id, {
+                $addToSet: { teams: teamId }
+            });
+
             await sendEmail(
                 email,
                 '📩 הוזמנת להצטרף לצוות',
-                `היי 👋 הוזמנת להצטרף לצוות ב־ManagerTask. הירשם כאן: ${link}`
+                `היי 👋 הוזמנת להצטרף לצוות. התחבר כאן: ${inviteLink}`
             );
 
-            return res.status(200).json({ message: 'ההזמנה נשלחה למשתמש חדש' });
+            return res.status(200).json({ message: 'ההזמנה נשלחה למשתמש קיים', inviteLink });
         }
 
-
-
-        // 🟢 משתמש קיים – הוסף אותו לצוות אם לא כבר חבר
-        const alreadyMember = team.members.find(m => m.userId && m.userId.toString() === invitedUser._id.toString());
-
-        if (!alreadyMember) {
-            team.members.push({ userId: invitedUser._id, role: 'member' });
-            await team.save();
-        }
-
-        await User.findByIdAndUpdate(invitedUser._id, {
-            $addToSet: { teams: teamId }
-        });
-
-
-        const link = `https://managertask.com/#/login?token=${inviteToken}`;
-        await sendEmail(
-            email,
-            '📩 הוזמנת להצטרף לצוות',
-            `היי 👋 הוזמנת להצטרף לצוות. התחבר כאן: ${link}`
-        );
-
-        res.status(200).json({ message: 'ההזמנה נשלחה למשתמש קיים' });
+        // 🟢 ללא מייל – החזר קישור בלבד לשיתוף
+        return res.status(200).json({ message: 'קישור נוצר בהצלחה', inviteLink });
 
     } catch (error) {
         console.error('❌ שגיאה בשליחת הזמנה:', error);
         res.status(500).json({ message: 'שגיאה בשליחת ההזמנה', error });
     }
 };
+
 
 
 exports.registerUser = async (req, res) => {
