@@ -2,7 +2,7 @@ const express = require('express');
 const connectDB = require('./config/db');
 const http = require('http');
 const googleRoutes = require('./routes/googleAuth');
-const cors = require('cors'); // 📌 הוספת CORS
+const cors = require('cors'); 
 const { Server } = require('socket.io');
 require('dotenv').config();
 const cookieParser = require('cookie-parser');
@@ -15,10 +15,10 @@ const io = new Server(server, {
   cors: { origin: '*' }
 });
 
-// התחברות למסד הנתונים
+// connect to database
 connectDB();
 
-// 📌 שימוש ב-CORS כדי לאפשר תקשורת בין ה-Frontend ל-Backend
+
 const allowedOrigins = [
   'http://localhost:5173',
   'https://taskmanager-client-2pyw.onrender.com',
@@ -44,7 +44,7 @@ app.use(cors({
 app.use(cookieParser());
 app.use(express.json());
 
-// 📌 ניתובים
+// routes
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/google', googleRoutes);
@@ -58,7 +58,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// הפעלת השרת
+// start server 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 

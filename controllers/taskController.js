@@ -9,17 +9,15 @@ const { formatDate, isOverdue, daysUntilDue } = require('../utils/helpers');
 // 📌 קבלת כל המשימות שהמשתמש יצר או שהוקצו אליו
 exports.getTasks = async (req, res) => {
   try {
-    console.log('📌 User from Token:', req.user);
-
     if (!req.user) {
       return res.status(400).json({ message: 'User authentication failed' });
     }
 
-    // 📌 שליפת משימות שהמשתמש יצר או משימות שהוקצו לו
+    
     const tasks = await Task.find({
       $or: [
-        { createdBy: req.user.id }, // משימות שהמשתמש יצר
-        { assignedTo: req.user.id } // משימות שהוקצו אליו
+        { createdBy: req.user.id }, 
+        { assignedTo: req.user.id } 
       ]
     });
 
@@ -97,7 +95,8 @@ exports.updateTask = async (req, res) => {
       type,
       duration,
       recurrence,
-      recurrenceEndDate
+      recurrenceEndDate,
+      priority
     } = req.body;
 
     const task = await Task.findById(req.params.id);
@@ -114,6 +113,9 @@ exports.updateTask = async (req, res) => {
     task.duration = duration ?? task.duration;
     task.recurrence = recurrence ?? task.recurrence;
     task.recurrenceEndDate = recurrenceEndDate ?? task.recurrenceEndDate;
+    task.priority = priority ?? task.priority;
+
+
 
     const updatedTask = await task.save();
 
@@ -202,18 +204,23 @@ exports.deleteTask = async (req, res) => {
 // 📌 סינון ומיון משימות לפי סטטוס ותאריך יעד
 exports.getFilteredTasks = async (req, res) => {
   try {
-    const { status, sortBy } = req.query;
+    const { status, sortBy, priority } = req.query;
     let filter = {};
 
+    if (priority) {
+      filter.priority = priority;
+    }
+
+
     if (status) {
-      filter.status = status; // סינון לפי סטטוס (completed / pending)
+      filter.status = status; 
     }
 
     let sortOption = {};
     if (sortBy === 'dueDate') {
-      sortOption.dueDate = 1; // מיון לפי תאריך יעד (מהקודם לחדש)
+      sortOption.dueDate = 1;
     } else if (sortBy === 'createdAt') {
-      sortOption.createdAt = -1; // מיון לפי תאריך יצירה (מהחדש לישן)
+      sortOption.createdAt = -1; 
     }
 
     const tasks = await Task.find(filter).sort(sortOption);
@@ -238,23 +245,20 @@ exports.getTasksByTeam = async (req, res) => {
       return res.status(404).json({ message: 'Team not found' });
     }
 
-    // חפש את המשתמש בצוות
+   
     const member = (team.members || []).find(member =>
       member?.userId && member.userId.toString() === req.user.id
     );
 
-    console.log('🧪 req.user.id:', req.user.id);
-    console.log('🧪 team.members:', team.members);
     if (!member) {
       return res.status(403).json({ message: 'You are not a member of this team' });
     }
 
     let tasks;
     if (member.role === 'admin') {
-      // 🧑‍💼 אם הוא מנהל – החזר את כל המשימות בצוות
       tasks = await Task.find({ teamId });
     } else {
-      // 👤 אם הוא לא מנהל – החזר רק משימות שהוקצו לו
+     
       tasks = await Task.find({ teamId, assignedTo: req.user.id });
     }
 
@@ -310,7 +314,6 @@ const createGoogleCalendarEvent = async (assignedTo, task) => {
     task.googleEventId = eventResponse.data.id;
     await task.save();
 
-    console.log('🗓️ אירוע נוסף ליומן Google');
   } catch (err) {
     console.error('❌ שגיאה בהוספת אירוע ליומן:', err.response?.data || err.message);
   }
@@ -328,7 +331,8 @@ exports.createTaskForTeam = async (req, res) => {
       type = 'task',
       duration,
       recurrence = 'none',
-      recurrenceEndDate
+      recurrenceEndDate,
+      priority = 'medium'
     } = req.body;
 
     const { teamId } = req.params;
@@ -360,7 +364,7 @@ exports.createTaskForTeam = async (req, res) => {
       return newTask;
     };
 
-    // הקצאה לכולם
+
     if (assignedTo === 'all') {
       const team = await Team.findById(teamId).populate('members.userId');
       const createdTasks = [];
@@ -378,7 +382,6 @@ exports.createTaskForTeam = async (req, res) => {
       return res.status(201).json({ message: 'המשימה הוקצתה לכולם', tasks: createdTasks });
     }
 
-    // הקצאה למשתמש בודד
     const newTask = await createAndSaveTask(assignedTo);
     return res.status(201).json(newTask);
 
@@ -396,7 +399,7 @@ exports.syncOpenTasksToCalendar = async (req, res) => {
       return res.status(400).json({ message: 'יומן Google לא מחובר' });
     }
 
-    const oauth2Client = getAuthorizedClient(user); // ✅ שימוש נכון
+    const oauth2Client = getAuthorizedClient(user); 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     // סינון רק משימות שלא סונכרנו
