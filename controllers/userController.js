@@ -98,7 +98,7 @@ exports.registerUser = async (req, res) => {
         const newUser = new User({ name, email, password, teams });
         await newUser.save();
 
-        // 🧩 שיוך לצוותים
+      
         for (const teamId of teams) {
             const team = await Team.findById(teamId);
             if (!team) continue;
@@ -319,7 +319,7 @@ exports.updateTeamName = async (req, res) => {
     }
   };
   
-// ✅ קבלת רשימת חברי הצוות
+
 exports.getTeam = async (req, res) => {
     try {
         const user = await User.findById(req.user.userId).populate('team', 'name email');
